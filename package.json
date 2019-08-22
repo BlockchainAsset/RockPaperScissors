@@ -1,0 +1,47 @@
+{
+  "name": "rockpaperscissors",
+  "version": "1.0.0",
+  "description": "ETH Community Blockstars 2.0's Project 3 - Rock Paper Scissors",
+  "main": "truffle-config.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "ganache-cli": "^6.5.1",
+    "http-server": "^0.11.1",
+    "husky": "^3.0.3",
+    "jquery": "3.4.1",
+    "truffle-assertions": "^0.9.1",
+    "truffle-contract": "4.0.23",
+    "web3": "^1.2.1"
+  },
+  "devDependencies": {
+    "chai": "4.2.0",
+    "chai-as-promised": "7.1.1",
+    "file-loader": "^4.0.0",
+    "truffle": "^5.0.8",
+    "webpack": "^4.38.0",
+    "webpack-cli": "^3.3.6"
+  },
+  "scripts": {
+    "start": "bash startGanache.sh && ./node_modules/.bin/truffle migrate --reset && ./node_modules/.bin/webpack-cli --mode development && http-server ./build/app -a 0.0.0.0 -c-1",
+    "build": "truffle compile && bash startGanache.sh &&  webpack-cli --mode development",
+    "test": "bash startGanache.sh && truffle test && bash stopGanache.sh"
+  },
+  "precommit": "truffle compile",
+  "testChain": "bash startGanache.sh && truffle test && bash stopGanache.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/remedcu/RockPaperScissors.git"
+  },
+  "keywords": [
+    "Blockchain",
+    "Game"
+  ],
+  "author": "Shebin John",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/remedcu/RockPaperScissors/issues"
+  },
+  "homepage": "https://github.com/remedcu/RockPaperScissors#readme"
+}
