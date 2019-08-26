@@ -6,11 +6,6 @@ import "./SafeMath.sol";
 contract RockPaperScissors is Stoppable{
     using SafeMath for uint;
 
-    struct UserDetails {
-        uint256 balance; // For storing the player balance in contract
-        uint256 lastBet; // For storing the player's last bet value
-    }
-
     struct PlayDetails {
         uint256 bet; // For storing the wager in that particular play
         uint256 deadline; // Each player has this much time till claimBack/Play
@@ -22,7 +17,7 @@ contract RockPaperScissors is Stoppable{
     uint256 public maxGamePlayTime; // Maximum amount of time for a game play from current time
     uint256 public resultTime; // Maximum amount of time for player 1 to reveal the result after which player 2 wins automatically
 
-    mapping (address => UserDetails) public users;
+    mapping (address => uint256) public balances; // For storing the player balance in contract
     mapping (bytes32 => PlayDetails) public plays;
 
     event Deposit(address indexed playerAddress, uint256 value);
@@ -31,6 +26,7 @@ contract RockPaperScissors is Stoppable{
     event Withdrawed(address indexed to, uint256 value);
     event Reveal(bytes32 indexed hashValue, address indexed playerAddress, uint256 indexed choice);
     event ForceReveal(bytes32 indexed hashValue, address indexed playerAddress);
+    event Winner(bytes32 indexed hashValue, address indexed playerAddress);
 
     constructor(bool initialRunState) public Stoppable(initialRunState){
         maxGamePlayTime = 3600; // Set at 1 hour
@@ -45,87 +41,70 @@ contract RockPaperScissors is Stoppable{
 
     }
 
-    function deposit() public onlyIfRunning payable returns(bool status){
+    function playerOne(bytes32 hashValue, uint256 bet, uint256 duration, address playerTwoAddress) public onlyIfRunning payable returns(bool status){
 
-        // To decrease the gas used
-        uint msgValue = msg.value;
-        address msgSender = msg.sender;
-
-        // Minimum 1 wei should be sent.
-        require(msgValue > 0, "Amount should be atleast 1 wei");
-
-        // If the player is new, his lastBet will be 0, which is updated to minimum 1 wei
-        if (users[msgSender].lastBet == 0){
-            users[msgSender].lastBet = 1;
-        }
-
-        // Details of Player is updated
-        users[msgSender].balance = msgValue;
-
-        emit Deposit(msgSender, msgValue);
-
-        return true;
-
-    }
-
-    function playerOne(bytes32 hashValue, uint256 bet, uint256 second) public onlyIfRunning returns(bool status){
-
-        address msgSender = msg.sender;
-        uint userBalance = users[msgSender].balance;
+        uint userBalance = balances[msg.sender];
 
         // Even though we are going a long way to make sure the hashValue will be unique
         require(plays[hashValue].playerOne == address(0), "Please choose another Unique Word");
 
         // This is just a particular amount of time set at the time of contract deployment
-        require(second < maxGamePlayTime, "Each play is restricted to be max of a particular amount of time");
+        require(duration <= maxGamePlayTime, "Each play is restricted to be max of a particular amount of time");
 
-        uint256 betAmount = bet;
+        require(bet > 0, "Atleast 1 wei bet is required");
 
-        // If the user wants to play with his last bet, he will pass zero to this function
-        if(betAmount == 0){
-            betAmount == users[msgSender].lastBet;
+        if(msg.value > 0){
+            // If extra amount is sent with this transaction, to get that.
+            balances[msg.sender] = userBalance.add(msg.value);
+            emit Deposit(msg.sender, msg.value);
         }
 
-        // This will also take care if betAmount specified was more than balance of that player
-        users[msgSender].balance = userBalance.sub(betAmount);
-        users[msgSender].lastBet = betAmount;
+        // This will also take care if bet specified was more than balance of that player
+        balances[msg.sender] = userBalance.sub(bet);
 
-        uint256 deadline = now.add(second);
+        uint256 deadline = now.add(duration);
 
         // Play Details are added
-        plays[hashValue].bet = betAmount;
+        plays[hashValue].bet = bet;
         plays[hashValue].deadline = deadline;
-        plays[hashValue].playerOne = msgSender;
+        plays[hashValue].playerOne = msg.sender;
+        plays[hashValue].playerTwo = playerTwoAddress;
 
-        emit PlayerOne(hashValue, msgSender, betAmount, deadline);
+        emit PlayerOne(hashValue, msg.sender, bet, deadline);
         return true;
 
     }
 
-    function playerTwo(bytes32 hashValue, uint256 choice) public onlyIfRunning returns(bool status){
+    function playerTwo(bytes32 hashValue, uint256 choice) public onlyIfRunning payable returns(bool status){
 
         require(choice > 0 && choice < 4, "Invalid Choice Passed");
 
-        address msgSender = msg.sender;
-        uint256 userBalance = users[msgSender].balance;
+        require(plays[hashValue].playerTwo == msg.sender, "Only that particular player can play this bet");
+
+        uint256 userBalance = balances[msg.sender];
         uint256 betAmount = plays[hashValue].bet;
         uint256 deadline = plays[hashValue].deadline;
 
         require(deadline <= now, "Play Deadline has passed");
+
+        if(msg.value > 0){
+            // If extra amount is sent with this transaction, to get that.
+            balances[msg.sender] = userBalance.add(msg.value);
+            emit Deposit(msg.sender, msg.value);
+        }
+
         require(userBalance >= betAmount, "The player don't have enough balance");
         require(plays[hashValue].playerTwoChoice == 0, "Some other player already used this hash");
 
         // This will also take care if betAmount specified was more than balance of that player
-        users[msgSender].balance = userBalance.sub(betAmount);
-        users[msgSender].lastBet = betAmount;
+        balances[msg.sender] = userBalance.sub(betAmount);
 
         // Play Details are added
-        plays[hashValue].bet = betAmount.mul(2);
         plays[hashValue].deadline = now.add(resultTime);
-        plays[hashValue].playerTwo = msgSender;
+        plays[hashValue].playerTwo = msg.sender;
         plays[hashValue].playerTwoChoice = choice;
 
-        emit PlayerTwo(hashValue, msgSender, choice);
+        emit PlayerTwo(hashValue, msg.sender, choice);
         return true;
 
     }
@@ -133,27 +112,25 @@ contract RockPaperScissors is Stoppable{
     function reveal(uint choice, bytes32 uniqueWord) public onlyIfRunning returns(bool status){
 
         bytes32 hashValue = encrypt(choice, uniqueWord);
-        address msgSender = msg.sender;
 
-        // Only the first player should be allowed to use this function
-        require(plays[hashValue].playerOne == msgSender, "Only first player can use this function");
-        require(plays[hashValue].bet != 0, "Play Ended");
+        // To make sure player 2 has played
+        require(plays[hashValue].playerTwoChoice != 0, "Player 2 has not played yet");
 
-        address won = address(0);
+        address won;
         address playerTwoAddress = plays[hashValue].playerTwo;
         uint256 playerTwoChoice = plays[hashValue].playerTwoChoice;
 
-        uint256 playerOneBalance = users[msgSender].balance;
-        uint256 playerTwoBalance = users[playerTwoAddress].balance;
+        uint256 playerOneBalance = balances[msg.sender];
+        uint256 playerTwoBalance = balances[playerTwoAddress];
         uint256 playerBalance = 0;
 
-        uint256 betAmount = plays[hashValue].bet;
-        uint256 betAmountByTwo = betAmount.div(2);
+        uint256 betAmountByTwo = plays[hashValue].bet;
+        uint256 betAmount = betAmountByTwo.mul(2);
         plays[hashValue].bet = 0;
 
         if(choice == playerTwoChoice){
-            users[msgSender].balance = playerOneBalance.add(betAmountByTwo);
-            users[playerTwoAddress].balance = playerTwoBalance.add(betAmountByTwo);
+            balances[msg.sender] = playerOneBalance.add(betAmountByTwo);
+            balances[playerTwoAddress] = playerTwoBalance.add(betAmountByTwo);
         }
         else if(
         (choice == 1 && playerTwoChoice == 2) ||
@@ -163,14 +140,15 @@ contract RockPaperScissors is Stoppable{
             playerBalance = playerTwoBalance;
         }
         else{
-            won = msgSender;
+            won = msg.sender;
             playerBalance = playerOneBalance;
         }
 
         if(won != address(0)){
-            users[won].balance = playerBalance.add(betAmount);
+            balances[won] = playerBalance.add(betAmount);
 
-            emit Reveal(hashValue, msgSender, choice);
+            emit Reveal(hashValue, msg.sender, choice);
+            emit Winner(hashValue, msg.sender);
         }
 
         return true;
@@ -178,17 +156,16 @@ contract RockPaperScissors is Stoppable{
 
     function forceReveal(bytes32 hashValue) public onlyIfRunning returns(bool status){
 
-        address msgSender = msg.sender;
-
         // Only the Remit Creator should be allowed to claim back
-        require(plays[hashValue].playerTwo == msgSender, "Only second player can use this function");
+        require(plays[hashValue].playerTwo == msg.sender, "Only second player can use this function");
         require(plays[hashValue].bet != 0, "Play Ended");
         require(plays[hashValue].deadline > now, "Force Reveal period has not started yet");
 
-        users[msgSender].balance = users[msgSender].balance.add(plays[hashValue].bet);
+        balances[msg.sender] = balances[msg.sender].add(plays[hashValue].bet.mul(2));
         plays[hashValue].bet = 0;
 
-        emit ForceReveal(hashValue, msgSender);
+        emit ForceReveal(hashValue, msg.sender);
+        emit Winner(hashValue, msg.sender);
 
         return true;
     }
@@ -197,13 +174,11 @@ contract RockPaperScissors is Stoppable{
 
         require(amount > 0, "Zero cant be withdrawn");
 
-        address payable msgSender = msg.sender;
+        balances[msg.sender] = balances[msg.sender].sub(amount);
 
-        users[msgSender].balance = users[msgSender].balance.sub(amount);
+        emit Withdrawed(msg.sender, amount);
 
-        emit Withdrawed(msgSender, amount);
-
-        msgSender.transfer(amount);
+        msg.sender.transfer(amount);
         return true;
 
     }
