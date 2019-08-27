@@ -52,8 +52,6 @@ contract RockPaperScissors is Stoppable{
 
         require(bet > 0, "Atleast 1 wei bet is required");
 
-        require(bet <= userBalance.add(msg.value), "Bet amount higher than balance");
-
         balances[msg.sender] = userBalance.add(msg.value).sub(bet);
         if(msg.value > 0){
             emit Deposit(msg.sender, msg.value);
@@ -82,18 +80,10 @@ contract RockPaperScissors is Stoppable{
         uint256 betAmount = plays[hashValue].wager;
         uint256 deadline = plays[hashValue].deadline;
 
-        require(deadline <= now, "Play Deadline has passed");
-
+        balances[msg.sender] = userBalance.add(msg.value).sub(betAmount);
         if(msg.value > 0){
-            // If extra amount is sent with this transaction, to get that.
-            balances[msg.sender] = userBalance.add(msg.value);
             emit Deposit(msg.sender, msg.value);
         }
-
-        require(userBalance >= betAmount, "The player don't have enough balance");
-
-        // This will also take care if betAmount specified was more than balance of that player
-        balances[msg.sender] = userBalance.sub(betAmount);
 
         // Play Details are added
         plays[hashValue].deadline = now.add(resultTime);
@@ -119,24 +109,20 @@ contract RockPaperScissors is Stoppable{
         plays[hashValue].wager = 0;
 
         if(choice == playerTwoChoice){
-            uint256 playerOneBalance = balances[msg.sender];
-            uint256 playerTwoBalance = balances[playerTwoAddress];
-            balances[msg.sender] = playerOneBalance.add(individualWager);
-            balances[playerTwoAddress] = playerTwoBalance.add(individualWager);
-            emit Reveal(hashValue, msg.sender, choice);
+            balances[msg.sender] = balances[msg.sender].add(individualWager);
+            balances[playerTwoAddress] = balances[playerTwoAddress].add(individualWager);
+            emit Reveal(hashValue, address(0), msg.sender, choice);
         }
         else{
             address won;
             uint256 playerBalance;
             if((choice == 1 && playerTwoChoice == 2) || (choice == 2 && playerTwoChoice == 3) || (choice == 3 && playerTwoChoice == 1)){
-                uint256 playerTwoBalance = balances[playerTwoAddress];
                 won = playerTwoAddress;
-                playerBalance = playerTwoBalance;
+                playerBalance = balances[playerTwoAddress];
             }
             else{
-                uint256 playerOneBalance = balances[msg.sender];
                 won = msg.sender;
-                playerBalance = playerOneBalance;
+                playerBalance = balances[msg.sender];
             }
 
             balances[won] = playerBalance.add(betAmount);
@@ -156,7 +142,6 @@ contract RockPaperScissors is Stoppable{
 
         uint256 wager = plays[hashValue].wager;
 
-        // Only the Remit Creator should be allowed to claim back
         require(plays[hashValue].playerTwo == msg.sender, "Only second player can use this function");
         require(wager != 0, "Play Ended");
         require(plays[hashValue].deadline > now, "Force Reveal period has not started yet");
