@@ -25,7 +25,8 @@ contract RockPaperScissors is Stoppable{
     event PlayerTwo(bytes32 indexed hashValue, address indexed playerAddress, uint256 indexed choice);
     event Withdrawed(address indexed to, uint256 value);
     event Reveal(bytes32 indexed hashValue, address indexed winnerAddress, address indexed revealAddress, uint256 choice);
-    event ForceReveal(bytes32 indexed hashValue, address indexed winnerAddress);
+    event ForceReveal(bytes32 indexed hashValue, address indexed winnerAddress, address indexed revealAddress);
+    event PlayerOneClaimBack(bytes32 indexed hashValue, address indexed playerAddress, address indexed initiatorAddress);
 
     constructor(bool initialRunState) public Stoppable(initialRunState){
         maxGamePlayTime = 3600; // Set at 1 hour
@@ -79,6 +80,8 @@ contract RockPaperScissors is Stoppable{
         uint256 userBalance = balances[msg.sender];
         uint256 betAmount = plays[hashValue].wager;
         uint256 deadline = plays[hashValue].deadline;
+
+        require(deadline <= now, "Play Deadline has passed");
 
         balances[msg.sender] = userBalance.add(msg.value).sub(betAmount);
         if(msg.value > 0){
@@ -141,22 +144,39 @@ contract RockPaperScissors is Stoppable{
     function forceReveal(bytes32 hashValue) public onlyIfRunning returns(bool status){
 
         uint256 wager = plays[hashValue].wager;
+        address playerTwoAddress = plays[hashValue].playerTwo;
 
-        require(plays[hashValue].playerTwo == msg.sender, "Only second player can use this function");
         require(wager != 0, "Play Ended");
         require(plays[hashValue].deadline > now, "Force Reveal period has not started yet");
 
         plays[hashValue].wager = 0;
-        balances[msg.sender] = balances[msg.sender].add(wager.mul(2));
+        balances[playerTwoAddress] = balances[playerTwoAddress].add(wager.mul(2));
 
         // Cleaning up
         plays[hashValue].playerTwo = address(0);
         plays[hashValue].playerTwoChoice = 0;
         plays[hashValue].deadline = 0;
 
-        emit ForceReveal(hashValue, msg.sender);
+        emit ForceReveal(hashValue, playerTwoAddress, msg.sender);
 
         return true;
+    }
+
+    function playerOneClaimBack(bytes32 hashValue) public onlyIfRunning payable returns(bool status){
+
+        require(plays[hashValue].deadline <= now, "Deadline is not over");
+        require(plays[hashValue].playerTwoChoice == 0, "Player 2 has already played");
+
+        address playerOneAddress = plays[hashValue].playerOne;
+
+        balances[playerOneAddress] = balances[playerOneAddress].add(plays[hashValue].wager);
+
+        // Cleaning up
+        plays[hashValue].deadline = 0;
+
+        emit PlayerOneClaimBack(hashValue, playerOneAddress, msg.sender);
+        return true;
+
     }
 
     function withdraw(uint256 amount) public onlyIfRunning returns(bool status){
