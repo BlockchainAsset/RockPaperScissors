@@ -81,7 +81,7 @@ contract RockPaperScissors is Stoppable{
         uint256 betAmount = plays[hashValue].wager;
         uint256 deadline = plays[hashValue].deadline;
 
-        require(deadline <= now, "Play Deadline has passed");
+        require(deadline >= now, "Play Deadline has passed");
 
         balances[msg.sender] = userBalance.add(msg.value).sub(betAmount);
         if(msg.value > 0){
@@ -147,7 +147,7 @@ contract RockPaperScissors is Stoppable{
         address playerTwoAddress = plays[hashValue].playerTwo;
 
         require(wager != 0, "Play Ended");
-        require(plays[hashValue].deadline > now, "Force Reveal period has not started yet");
+        require(plays[hashValue].deadline < now, "Force Reveal period has not started yet");
 
         plays[hashValue].wager = 0;
         balances[playerTwoAddress] = balances[playerTwoAddress].add(wager.mul(2));
@@ -164,7 +164,7 @@ contract RockPaperScissors is Stoppable{
 
     function playerOneClaimBack(bytes32 hashValue) public onlyIfRunning payable returns(bool status){
 
-        require(plays[hashValue].deadline <= now, "Deadline is not over");
+        require(plays[hashValue].deadline < now, "Deadline is not over");
         require(plays[hashValue].playerTwoChoice == 0, "Player 2 has already played");
 
         address playerOneAddress = plays[hashValue].playerOne;
