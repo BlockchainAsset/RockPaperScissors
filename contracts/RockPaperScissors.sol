@@ -169,7 +169,10 @@ contract RockPaperScissors is Stoppable{
 
         address playerOneAddress = plays[hashValue].playerOne;
 
-        balances[playerOneAddress] = balances[playerOneAddress].add(plays[hashValue].wager);
+        uint256 wagerRefund = plays[hashValue].wager;
+        plays[hashValue].wager = 0;
+
+        balances[playerOneAddress] = balances[playerOneAddress].add(wagerRefund);
 
         // Cleaning up
         plays[hashValue].deadline = 0;
