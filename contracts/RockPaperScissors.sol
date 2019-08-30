@@ -28,9 +28,9 @@ contract RockPaperScissors is Stoppable{
     event ForceReveal(bytes32 indexed hashValue, address indexed winnerAddress, address indexed revealAddress);
     event PlayerOneClaimBack(bytes32 indexed hashValue, address indexed playerAddress, address indexed initiatorAddress);
 
-    constructor(bool initialRunState) public Stoppable(initialRunState){
-        maxGamePlayTime = 3600; // Set at 1 hour
-        resultTime = 1200; // Set at 20 min
+    constructor(uint256 maxGamePlay, uint256 result, bool initialRunState) public Stoppable(initialRunState){
+        maxGamePlayTime = maxGamePlay;
+        resultTime = result;
     }
 
     function encrypt(uint256 choice, bytes32 uniqueWord) public view returns(bytes32 hashValue){
@@ -175,6 +175,7 @@ contract RockPaperScissors is Stoppable{
         balances[playerOneAddress] = balances[playerOneAddress].add(wagerRefund);
 
         // Cleaning up
+        plays[hashValue].playerTwo = address(0);
         plays[hashValue].deadline = 0;
 
         emit PlayerOneClaimBack(hashValue, playerOneAddress, msg.sender);
